@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pandas
+numpy
+matplotlib
+scikit-learn
+requests
+beautifulsoup4
+duckdb
+python-multipart
+openai
