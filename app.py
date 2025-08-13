@@ -1,37 +1,76 @@
-from fastapi import FastAPI, UploadFile, Form
+from fastapi import FastAPI, File, UploadFile, Form
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import io
 import duckdb
-from bs4 import BeautifulSoup
-import requests
-from sklearn.linear_model import LinearRegression
+import io
 import openai
+import os
 
-app = FastAPI()
+# Load API key from environment
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
+app = FastAPI(
+    title="Data Analyst Agent",
+    description="Upload CSV + ask data-related questions, get answers + visualizations.",
+    version="1.0"
+)
+
+# Allow all CORS (for frontend use)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Home route
 @app.get("/")
-def home():
-    return {"message": "Data Analyst Agent API is running successfully!"}
+async def home():
+    return {"status": "running", "message": "Data Analyst Agent API is live!"}
 
+# Upload + process data
 @app.post("/analyze")
-async def analyze_data(file: UploadFile, task: str = Form(...)):
+async def analyze(
+    file: UploadFile = File(...),
+    question: str = Form(...)
+):
     try:
-        # Read uploaded CSV into pandas DataFrame
+        # Read uploaded CSV into DataFrame
         contents = await file.read()
         df = pd.read_csv(io.BytesIO(contents))
 
-        # Example: Simple analysis
-        summary = df.describe(include='all').to_dict()
+        # Store dataframe in DuckDB for SQL queries
+        con = duckdb.connect()
+        con.register("data", df)
 
-        return {
-            "status": "success",
-            "task": task,
-            "summary": summary
-        }
+        # Generate SQL query based on natural language question (Optional)
+        prompt = f"""
+        You are a data analyst. Given the dataframe 'data', answer the question:
+        Question: {question}
+        Do not explain code, just give a short answer.
+        """
+
+        # Use OpenAI for answering
+        response = openai.ChatCompletion.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a skilled data analyst."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0
+        )
+
+        answer = response.choices[0].message["content"]
+
+        return JSONResponse(content={
+            "columns": df.columns.tolist(),
+            "rows": len(df),
+            "sample_data": df.head(5).to_dict(orient="records"),
+            "question": question,
+            "answer": answer
+        })
 
     except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-# To run: uvicorn filename:app --reload
+        return JSONResponse(content={"error": str(e)}, status_code=500)

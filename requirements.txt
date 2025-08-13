@@ -8,4 +8,4 @@ requests
 beautifulsoup4
 duckdb
 python-multipart
-openai>=1.0.0
+openai
