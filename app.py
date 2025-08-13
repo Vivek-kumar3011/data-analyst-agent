@@ -1,32 +1,35 @@
-from fastapi import FastAPI, File, UploadFile, Form
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, UploadFile, Form
 import pandas as pd
-import tempfile
-import os
-from utils.data_utils import load_data
-from utils.analysis_utils import perform_analysis
+import numpy as np
+import matplotlib.pyplot as plt
+import io
+import duckdb
+from bs4 import BeautifulSoup
+import requests
+from sklearn.linear_model import LinearRegression
+import openai
 
-app = FastAPI(title="Data Analyst Agent API")
+app = FastAPI()
 
-@app.post("/")
-async def analyze_data(questions: UploadFile = File(...), files: list[UploadFile] = File(None)):
-    # Read questions.txt
-    q_text = (await questions.read()).decode("utf-8")
+@app.get("/")
+def home():
+    return {"message": "Data Analyst Agent API is running successfully!"}
 
-    # Save any extra uploaded files temporarily
-    temp_dir = tempfile.mkdtemp()
-    file_paths = []
-    if files:
-        for f in files:
-            file_path = os.path.join(temp_dir, f.filename)
-            with open(file_path, "wb") as out_file:
-                out_file.write(await f.read())
-            file_paths.append(file_path)
+@app.post("/analyze")
+async def analyze_data(file: UploadFile, task: str = Form(...)):
+    try:
+        # Read uploaded CSV into pandas DataFrame
+        contents = await file.read()
+        df = pd.read_csv(io.BytesIO(contents))
 
-    # Load and prepare data
-    df = load_data(file_paths)
+        # Example: Simple analysis
+        summary = df.describe(include='all').to_dict()
 
-    # Run analysis
-    result = perform_analysis(q_text, df)
+        return {
+            "status": "success",
+            "task": task,
+            "summary": summary
+        }
 
-    return JSONResponse(content=result)
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
